@@ -1,0 +1,36 @@
+# 构建输出
+build/
+out/
+release/
+*.o
+*.ko
+*.mod
+*.mod.c
+*.order
+*.symvers
+
+# 内核源码（克隆的）
+linux-src/
+sm8550-reference/
+edk2-msm-src/
+
+# 固件（大文件）
+firmware/*.mbn
+firmware/*.elf
+firmware/*.bin
+firmware/*.img
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

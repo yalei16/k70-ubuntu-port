@@ -1,0 +1,162 @@
+# OpenClaw 集成配置
+# 将此文件复制到 OpenClaw 配置目录
+
+name: K70 Ubuntu Port Assistant
+version: 1.0
+description: 辅助 K70 Ubuntu 移植的 AI Agent 工具集
+
+# 工具定义
+tools:
+  # 编译相关
+  - name: build_kernel
+    description: 编译 K70 内核
+    command: |
+      cd {{workspace}}/k70-ubuntu-port && 
+      ./build-local.sh {{kernel_version}} kernel
+    args:
+      kernel_version:
+        type: string
+        default: "v6.12"
+        description: 内核版本标签
+
+  - name: build_edk2
+    description: 编译 EDK2 UEFI
+    command: |
+      cd {{workspace}}/k70-ubuntu-port/edk2/device/vermeer && 
+      ./build.sh
+
+  - name: build_all
+    description: 完整编译所有组件
+    command: |
+      cd {{workspace}}/k70-ubuntu-port && 
+      ./build-local.sh {{kernel_version}} all
+    args:
+      kernel_version:
+        type: string
+        default: "v6.12"
+
+  # 设备树相关
+  - name: compile_dts
+    description: 编译设备树
+    command: |
+      cd {{workspace}}/k70-ubuntu-port/dts && 
+      dtc -I dts -O dtb -o sm8550-xiaomi-vermeer.dtb 
+        sm8550-xiaomi-vermeer.dts
+
+  - name: compare_dts
+    description: 对比 vermeer 和参考 DTS
+    command: |
+      python3 {{workspace}}/k70-ubuntu-port/scripts/dts-compare.py 
+        {{workspace}}/k70-ubuntu-port/dts/sm8550-xiaomi-vermeer.dts 
+        {{workspace}}/k70-ubuntu-port/build/sm8550-reference/.../sm8550-xiaomi-*.dts
+
+  # 刷机相关
+  - name: flash_device
+    description: 刷入编译产物到 K70
+    command: |
+      cd {{workspace}}/k70-ubuntu-port && 
+      ./flash.sh
+    confirm: true
+    warning: "此操作将修改设备分区，请确保已备份数据！"
+
+  - name: reboot_fastboot
+    description: 重启到 fastboot 模式
+    command: adb reboot bootloader
+
+  - name: check_device
+    description: 检查设备连接状态
+    command: fastboot devices
+
+  # 日志分析
+  - name: analyze_log
+    description: 分析内核启动日志
+    command: |
+      python3 {{workspace}}/k70-ubuntu-port/scripts/analyze-panic.py 
+        {{log_file}}
+    args:
+      log_file:
+        type: string
+        description: 日志文件路径
+
+  # GitHub 操作
+  - name: trigger_ci
+    description: 触发 GitHub Actions 编译
+    command: |
+      cd {{workspace}}/k70-ubuntu-port && 
+      git push origin {{branch}}
+    args:
+      branch:
+        type: string
+        default: "dev"
+
+  - name: check_ci_status
+    description: 检查 CI 状态
+    command: |
+      gh run list --repo={{repo}} --limit=5
+    args:
+      repo:
+        type: string
+        default: "YOUR_USERNAME/k70-ubuntu-port"
+
+  # 固件提取
+  - name: extract_firmware
+    description: 从 MIUI ROM 提取固件
+    command: |
+      cd {{workspace}}/k70-ubuntu-port && 
+      python3 scripts/extract-firmware.py {{rom_path}}
+    args:
+      rom_path:
+        type: string
+        description: MIUI ROM 文件路径
+
+# 工作流定义
+workflows:
+  - name: daily_build
+    description: 每日自动编译测试
+    schedule: "0 2 * * *"  # 每天凌晨 2 点
+    steps:
+      - trigger_ci:
+          branch: "dev"
+      - check_ci_status:
+          repo: "YOUR_USERNAME/k70-ubuntu-port"
+
+  - name: dts_development
+    description: DTS 开发工作流
+    steps:
+      - compile_dts
+      - compare_dts
+      - trigger_ci:
+          branch: "dev"
+
+  - name: flash_test
+    description: 刷机测试工作流
+    steps:
+      - check_device
+      - build_all:
+          kernel_version: "v6.12"
+      - flash_device
+
+# 提示词模板
+prompts:
+  dts_fix: |
+    分析以下 DTS 编译错误，给出修复建议：
+    {{error_log}}
+
+    当前 DTS 文件：{{dts_file}}
+    参考 DTS：{{reference_dts}}
+
+  kernel_config: |
+    为 K70 (SM8550) 生成内核配置建议：
+    - 目标功能：{{feature}}
+    - 当前配置：{{current_config}}
+
+    请提供需要启用的 CONFIG 选项。
+
+  panic_analysis: |
+    分析以下内核 panic 日志：
+    {{panic_log}}
+
+    设备：K70 (vermeer, SM8550)
+    内核版本：{{kernel_version}}
+
+    请给出可能的原因和修复方向。

@@ -1,0 +1,412 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Device Tree Source for Xiaomi Redmi K70 (vermeer)
+ * Based on: Xiaomi Pad 6S Pro 12.4 (map220v/sm8550-mainline)
+ * SoC: Qualcomm SM8550-AB Snapdragon 8 Gen 2
+ *
+ * 移植状态: WIP - 基础框架，需根据实际硬件调整
+ */
+
+/dts-v1/;
+
+#include "sm8550.dtsi"
+#include "sm8550-pm8550.dtsi"
+#include "sm8550-pmk8550.dtsi"
+
+/ {
+	model = "Xiaomi Redmi K70";
+	compatible = "xiaomi,vermeer", "qcom,sm8550";
+
+	aliases {
+		serial0 = &uart14;
+		hsuart0 = &uart7;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		#address-cells = <2>;
+		#size-cells = <2>;
+	};
+
+	/* 内存配置 - 需根据实际硬件调整 */
+	memory@80000000 {
+		device_type = "memory";
+		/* 12GB 版本 */
+		reg = <0x0 0x80000000 0x0 0x300000000>;
+	};
+
+	/* 保留内存区域 */
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* 显示帧缓冲 */
+		framebuffer@90000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x90000000 0x0 0x2400000>;
+			no-map;
+		};
+
+		/* 视频处理 */
+		video@b0000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0xb0000000 0x0 0x500000>;
+			no-map;
+		};
+
+		/* 相机 */
+		camera_region@9c000000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x9c000000 0x0 0x1400000>;
+			no-map;
+		};
+
+		/* 音频 DSP */
+		audio_dsp@95800000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x95800000 0x0 0x280000>;
+			no-map;
+		};
+
+		/* 调制解调器 */
+		mpss_region@8a200000 {
+			compatible = "shared-dma-pool";
+			reg = <0x0 0x8a200000 0x0 0x5d00000>;
+			no-map;
+		};
+
+		/* 安全处理器 */
+		smem@86000000 {
+			compatible = "qcom,smem";
+			reg = <0x0 0x86000000 0x0 0x200000>;
+			no-map;
+		};
+	};
+
+	/* GPIO 按键 - 需根据实际硬件调整 */
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_keys_default>;
+
+		key-volumedown {
+			label = "Volume Down";
+			linux,code = <KEY_VOLUMEDOWN>;
+			gpios = <&tlmm 0 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+		};
+
+		key-volumeup {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&tlmm 1 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+		};
+
+		key-power {
+			label = "Power";
+			linux,code = <KEY_POWER>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,input-type = <1>;
+			wakeup-source;
+		};
+	};
+
+	/* 振动马达 */
+	vibrator@0 {
+		compatible = "gpio-vibrator";
+		gpios = <&tlmm 2 GPIO_ACTIVE_HIGH>;
+		voltage-max-mv = <3000>;
+	};
+
+	/* LED 指示灯 - 需确认硬件 */
+	leds {
+		compatible = "gpio-leds";
+
+		notification_led: led-0 {
+			label = "notification";
+			gpios = <&tlmm 3 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+			default-state = "off";
+		};
+	};
+};
+
+/* 串口调试 */
+&uart14 {
+	status = "okay";
+};
+
+/* 蓝牙 UART */
+&uart7 {
+	status = "okay";
+
+	bluetooth {
+		compatible = "qcom,qca6390-bt";
+		// 需根据实际蓝牙芯片调整
+	};
+};
+
+/* UFS 存储 */
+&ufs_mem_hc {
+	status = "okay";
+
+	/* UFS 4.0 配置 */
+};
+
+/* PCIe 控制器 - WiFi/BT */
+&pcie0 {
+	status = "okay";
+
+	perst-gpio = <&tlmm 4 GPIO_ACTIVE_LOW>;
+	wake-gpio = <&tlmm 5 GPIO_ACTIVE_HIGH>;
+
+	/* WiFi 7 网卡 */
+	wifi@0 {
+		compatible = "pci17cb,1107";
+		// QCA6696 或 WCN7850
+		reg = <0 0 0 0 0>;
+	};
+};
+
+/* PCIe 控制器 - 可选 NVMe */
+&pcie1 {
+	status = "okay";
+};
+
+/* USB 控制器 */
+&usb_1_ss0 {
+	status = "okay";
+
+	/* USB3 + DisplayPort Altmode */
+};
+
+&usb_1_ss1 {
+	status = "okay";
+};
+
+/* 显示 DSI 控制器 - 需根据实际面板调整 */
+&dsi0 {
+	status = "okay";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	panel@0 {
+		compatible = "xiaomi,vermeer-panel";
+		reg = <0>;
+
+		/* 3200x1440 AMOLED 面板参数 */
+		width-mm = <68>;
+		height-mm = <151>;
+
+		/* 需从 Android DTB 提取实际时序 */
+		panel-timing {
+			clock-frequency = <0>;  /* 待填充 */
+			hactive = <3200>;
+			vactive = <1440>;
+			hfront-porch = <0>;     /* 待填充 */
+			hback-porch = <0>;      /* 待填充 */
+			hsync-len = <0>;        /* 待填充 */
+			vfront-porch = <0>;     /* 待填充 */
+			vback-porch = <0>;      /* 待填充 */
+			vsync-len = <0>;        /* 待填充 */
+		};
+
+		/* DSC 压缩配置 */
+		compression = <1>;
+		dsc-slice-height = <8>;
+		dsc-slice-width = <3200>;
+		dsc-slice-per-pkt = <1>;
+
+		/* 背光 */
+		backlight = <&wled>;
+
+		/* 电源供应 */
+		avdd-supply = <&vreg_l13c_1p8>;
+		avee-supply = <&vreg_l14c_1p8>;
+		vddi-supply = <&vreg_l1c_1p2>;
+	};
+};
+
+/* 显示控制器 */
+&mdss {
+	status = "okay";
+};
+
+/* 背光 LED */
+&pm8550l_wled {
+	status = "okay";
+
+	/* 双串配置 */
+	qcom,enabled-strings = <0 1>;
+	qcom,string-currents = <25000 25000>;
+};
+
+/* 触摸控制器 - 需根据实际硬件调整 */
+&i2c6 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	touchscreen@5d {
+		compatible = "goodix,gt9916";
+		reg = <0x5d>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <9 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 10 GPIO_ACTIVE_LOW>;
+		irq-gpios = <&tlmm 9 GPIO_ACTIVE_LOW>;
+		// 需确认实际触摸芯片型号
+	};
+};
+
+/* 电池 & 充电 - PM8550 */
+&pm8550_fg {
+	status = "okay";
+
+	monitored-battery = <&battery>;
+};
+
+&pm8550_charger {
+	status = "okay";
+
+	/* 120W 快充配置 */
+	// 需根据实际充电芯片调整
+};
+
+/* 电池定义 */
+battery: battery {
+	compatible = "simple-battery";
+	charge-full-design-microamp-hours = <5000000>;
+	voltage-min-design-microvolt = <3400000>;
+	voltage-max-design-microvolt = <4400000>;
+};
+
+/* 温度传感器 */
+&pm8550_adc_tm {
+	status = "okay";
+};
+
+/* 音频 - Soundwire */
+&soundwire0 {
+	status = "okay";
+
+	/* WSA 扬声器 */
+};
+
+&lpass_rx_macro {
+	status = "okay";
+};
+
+&lpass_tx_macro {
+	status = "okay";
+};
+
+&lpass_va_macro {
+	status = "okay";
+};
+
+/* 相机 - 需根据实际传感器调整 */
+&camcc {
+	status = "okay";
+};
+
+&camss {
+	status = "okay";
+};
+
+/* 指纹传感器 - 屏下光学指纹 */
+&spi0 {
+	status = "okay";
+
+	fingerprint@0 {
+		compatible = "goodix,gf9518";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
+		// 需确认实际指纹芯片型号
+	};
+};
+
+/* NFC */
+&i2c8 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	nfc@28 {
+		compatible = "nxp,pn553";
+		reg = <0x28>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <12 IRQ_TYPE_LEVEL_HIGH>;
+		// 需确认实际 NFC 芯片
+	};
+};
+
+/* GPIO 配置 */
+&tlmm {
+	gpio_keys_default: gpio-keys-default {
+		pins = "gpio0", "gpio1";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+		input-enable;
+	};
+
+	/* 显示屏复位 */
+	dsi0_panel_reset: dsi0-panel-reset {
+		pins = "gpio13";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+		output-low;
+	};
+
+	/* 触摸复位 */
+	touch_reset: touch-reset {
+		pins = "gpio10";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+};
+
+/* 电源域 */
+&rpmhpd {
+	// 需根据实际硬件配置
+};
+
+/* CPU 频率调节 */
+&cpu0_0 {
+	// Cortex-A510
+};
+
+&cpu0_1 {
+	// Cortex-A510
+};
+
+&cpu0_2 {
+	// Cortex-A510
+};
+
+&cpu1_0 {
+	// Cortex-A710
+};
+
+&cpu1_1 {
+	// Cortex-A710
+};
+
+&cpu2_0 {
+	// Cortex-A715
+};
+
+&cpu2_1 {
+	// Cortex-A715
+};
+
+&cpu3_0 {
+	// Cortex-X3
+};

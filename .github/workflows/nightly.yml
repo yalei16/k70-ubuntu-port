@@ -1,0 +1,52 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # 每天凌晨 3:00 UTC (北京时间 11:00)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes
+        id: check
+        run: |
+          # 检查最近 24 小时是否有提交
+          LAST_COMMIT=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          DIFF=$((NOW - LAST_COMMIT))
+
+          if [ $DIFF -lt 86400 ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "最近 24 小时有更新"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "最近 24 小时无更新，跳过构建"
+          fi
+
+  build:
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    uses: ./.github/workflows/main.yml
+
+  notify:
+    needs: [check-changes, build]
+    runs-on: ubuntu-24.04
+    if: always() && needs.check-changes.outputs.has_changes == 'true'
+    steps:
+      - name: Notify
+        run: |
+          echo "夜间构建完成"
+          echo "状态: ${{ needs.build.result }}"
+
+          # 这里可以添加 Telegram/Discord 通知
+          # 需要配置 secrets

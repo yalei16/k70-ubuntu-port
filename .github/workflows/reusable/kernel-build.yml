@@ -1,0 +1,93 @@
+name: Reusable Kernel Build
+
+on:
+  workflow_call:
+    inputs:
+      kernel_version:
+        required: true
+        type: string
+        default: 'v6.12'
+      device:
+        required: true
+        type: string
+        default: 'vermeer'
+      soc:
+        required: true
+        type: string
+        default: 'sm8550'
+      defconfig:
+        required: true
+        type: string
+        default: 'sm8550_defconfig'
+    outputs:
+      kernel_artifact:
+        description: 'Kernel artifact name'
+        value: ${{ jobs.build.outputs.artifact_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      artifact_name: kernel-${{ inputs.device }}-${{ github.run_number }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             bc bison build-essential ccache cmake crossbuild-essential-arm64             curl device-tree-compiler flex git libncurses-dev libssl-dev             ninja-build python3 qemu-user-static u-boot-tools wget xz-utils
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-${{ inputs.soc }}-${{ inputs.kernel_version }}
+          max-size: 5G
+
+      - name: Clone kernel
+        run: |
+          git clone --depth 1 --branch ${{ inputs.kernel_version }}             https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git             linux-src
+          git clone --depth 1 https://github.com/map220v/sm8550-mainline.git             sm8550-reference
+
+      - name: Apply patches and configure
+        run: |
+          cd linux-src
+
+          # 复制 DTS
+          cp ../dts/sm8550-xiaomi-${{ inputs.device }}.dts arch/arm64/boot/dts/qcom/ 2>/dev/null || true
+          cp ../sm8550-reference/arch/arm64/boot/dts/qcom/sm8550-xiaomi-*.dts arch/arm64/boot/dts/qcom/ 2>/dev/null || true
+
+          # 更新 Makefile
+          if ! grep -q "sm8550-xiaomi-${{ inputs.device }}" arch/arm64/boot/dts/qcom/Makefile; then
+            echo "dtb-\$(CONFIG_ARCH_QCOM) += sm8550-xiaomi-${{ inputs.device }}.dtb"               >> arch/arm64/boot/dts/qcom/Makefile
+          fi
+
+          # 应用补丁
+          for patch in ../kernel/patches/*.patch; do
+            [ -f "$patch" ] && git apply "$patch" 2>/dev/null || true
+          done
+
+          # 配置
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- ${{ inputs.defconfig }}
+          [ -f ../kernel/configs/${{ inputs.device }}.config ] &&             cat ../kernel/configs/${{ inputs.device }}.config >> .config
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+
+      - name: Build
+        run: |
+          cd linux-src
+          make -j$(nproc) ARCH=arm64             CROSS_COMPILE="ccache aarch64-linux-gnu-"             CC="ccache aarch64-linux-gnu-gcc"             Image.gz dtbs vmlinuz.efi 2>/dev/null || true
+          make -j$(nproc) ARCH=arm64             CROSS_COMPILE="ccache aarch64-linux-gnu-"             CC="ccache aarch64-linux-gnu-gcc"             modules
+          mkdir -p ../out/modules
+          make ARCH=arm64 INSTALL_MOD_PATH=../out/modules modules_install
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ inputs.device }}-${{ github.run_number }}
+          path: |
+            linux-src/arch/arm64/boot/Image.gz
+            linux-src/arch/arm64/boot/vmlinuz.efi
+            linux-src/arch/arm64/boot/dts/qcom/*.dtb
+            out/modules/
+          retention-days: 30

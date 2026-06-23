@@ -1,0 +1,50 @@
+[Defines]
+  PLATFORM_NAME        = vermeer
+  PLATFORM_GUID        = 12345678-1234-1234-1234-123456789ABC
+  PLATFORM_VERSION     = 0.1
+  DSC_SPECIFICATION    = 0x00010005
+  OUTPUT_DIRECTORY     = Build/vermeer
+  SUPPORTED_ARCHITECTURES = AARCH64
+  BUILD_TARGETS        = DEBUG|RELEASE
+  SKUID_IDENTIFIER     = DEFAULT
+
+[FV.FvMain]
+  BlockSize     = 0x1000
+  FvAlignment   = 16
+  ERASE_POLARITY = 1
+  MEMORY_BASE_ADDRESS = 0x80000000
+  MEMORY_LENGTH = 0x00F00000
+
+  APRIORI PEI {
+    # PEI 阶段模块
+  }
+
+  APRIORI DXE {
+    # DXE 阶段模块
+  }
+
+  INF MdeModulePkg/Core/Dxe/DxeMain.inf
+  INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
+
+  # 设备特定驱动
+  INF Platform/Qualcomm/sm8550/vermeer/Drivers/PanelDxe/PanelDxe.inf
+  INF Platform/Qualcomm/sm8550/vermeer/Drivers/ButtonsDxe/ButtonsDxe.inf
+
+  # 文件系统
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+  INF FatPkg/EnhancedFatDxe/Fat.inf
+  INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
+
+  # 引导管理器
+  INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+  INF MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+
+  # 简单启动器
+  INF Platform/Qualcomm/sm8550/vermeer/Application/SimpleInit/SimpleInit.inf
+
+[FD.vermeer]
+  BaseAddress   = 0x80000000
+  Size          = 0x01000000
+  ErasePolarity = 1
+
+  0x00000000 | FV.FvMain

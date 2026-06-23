@@ -1,0 +1,50 @@
+name: Reusable EDK2 Build
+
+on:
+  workflow_call:
+    inputs:
+      device:
+        required: true
+        type: string
+        default: 'vermeer'
+      soc:
+        required: true
+        type: string
+        default: 'sm8550'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential uuid-dev iasl git nasm             python3 python3-venv python3-pip             gcc-aarch64-linux-gnu libssl-dev
+
+      - name: Clone and build
+        run: |
+          git clone --recursive --depth 1             https://github.com/edk2-porting/edk2-msm.git edk2-msm-src
+
+          mkdir -p edk2-msm-src/Platform/Qualcomm/${{ inputs.soc }}/${{ inputs.device }}
+          cp edk2/device/${{ inputs.device }}/*              edk2-msm-src/Platform/Qualcomm/${{ inputs.soc }}/${{ inputs.device }}/
+
+          cd edk2-msm-src
+          export WORKSPACE=$(pwd)
+          export EDK_TOOLS_PATH=$WORKSPACE/BaseTools
+          export GCC5_AARCH64_PREFIX=aarch64-linux-gnu-
+
+          [ ! -f "$WORKSPACE/BaseTools/Source/C/bin/GenFv" ] &&             make -C "$WORKSPACE/BaseTools" -j$(nproc)
+
+          source "$WORKSPACE/edksetup.sh"
+          build -a AARCH64 -t GCC5             -p "Platform/Qualcomm/${{ inputs.soc }}/${{ inputs.device }}/${{ inputs.device }}.dsc"             -b RELEASE -j$(nproc)
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: edk2-${{ inputs.device }}-${{ github.run_number }}
+          path: edk2-msm-src/Build/${{ inputs.device }}/**/*.fd
+          retention-days: 30

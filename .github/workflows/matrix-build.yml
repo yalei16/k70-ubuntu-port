@@ -1,0 +1,81 @@
+name: Multi-Device Matrix Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      devices:
+        description: 'Devices to build (comma-separated)'
+        required: true
+        default: 'vermeer'
+      kernel_version:
+        description: 'Kernel version'
+        required: true
+        default: 'v6.12'
+
+jobs:
+  # 解析设备列表
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          DEVICES="${{ github.event.inputs.devices }}"
+          # 转换为 JSON 数组
+          JSON=$(echo "$DEVICES" | tr ',' '
+' | jq -R . | jq -s . | tr -d '
+')
+          echo "matrix=$JSON" >> $GITHUB_OUTPUT
+          echo "构建设备: $JSON"
+
+  # 矩阵构建内核
+  build-kernels:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build kernel for ${{ matrix.device }}
+        uses: ./.github/workflows/reusable/kernel-build.yml
+        with:
+          kernel_version: ${{ github.event.inputs.kernel_version }}
+          device: ${{ matrix.device }}
+          soc: sm8550
+          defconfig: sm8550_defconfig
+
+  # 矩阵构建 EDK2
+  build-edk2s:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build EDK2 for ${{ matrix.device }}
+        uses: ./.github/workflows/reusable/edk2-build.yml
+        with:
+          device: ${{ matrix.device }}
+          soc: sm8550
+
+  # 汇总报告
+  report:
+    needs: [build-kernels, build-edk2s]
+    runs-on: ubuntu-24.04
+    if: always()
+    steps:
+      - name: Build report
+        run: |
+          echo "=== 构建报告 ==="
+          echo "内核构建: ${{ needs.build-kernels.result }}"
+          echo "EDK2 构建: ${{ needs.build-edk2s.result }}"

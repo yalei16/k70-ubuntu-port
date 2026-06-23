@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  builder:
+    build: .
+    image: k70-ubuntu-builder:latest
+    container_name: k70-builder
+    volumes:
+      - .:/workspace
+      - k70-ccache:/root/.ccache
+    environment:
+      - CCACHE_DIR=/root/.ccache
+      - CROSS_COMPILE=aarch64-linux-gnu-
+      - ARCH=arm64
+    working_dir: /workspace
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    privileged: true  # 需要用于 binfmt
+
+volumes:
+  k70-ccache:
+    driver: local

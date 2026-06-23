@@ -1,0 +1,121 @@
+name: DTS Check & Compare
+
+on:
+  push:
+    paths:
+      - 'dts/**'
+  pull_request:
+    paths:
+      - 'dts/**'
+
+jobs:
+  dts-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler python3 python3-pip
+          pip3 install git+https://github.com/devicetree-org/dt-schema.git
+
+      - name: Clone reference DTS
+        run: |
+          git clone --depth 1 https://github.com/map220v/sm8550-mainline.git reference
+
+      - name: Compile DTS
+        run: |
+          cd dts
+          for dts in *.dts; do
+            echo "编译 $dts..."
+            dtc -I dts -O dtb -o "$(basename $dts .dts).dtb" "$dts" 2>&1 | tee compile.log
+          done
+
+          if grep -q "ERROR" compile.log; then
+            echo "DTS 编译存在错误！"
+            exit 1
+          fi
+
+      - name: Check DTB size
+        run: |
+          echo "=== DTB 文件大小检查 ==="
+          for dtb in dts/*.dtb; do
+            size=$(stat -c%s "$dtb")
+            echo "$(basename $dtb): $size bytes"
+            if [ $size -gt 1048576 ]; then
+              echo "警告: $(basename $dtb) 超过 1MB，可能影响引导"
+            fi
+          done
+
+      - name: Compare with reference
+        run: |
+          python3 << 'PYEOF'
+          import os
+          import re
+
+          def extract_nodes(dts_file):
+              nodes = {}
+              current_node = None
+              current_content = []
+
+              with open(dts_file, 'r') as f:
+                  for line in f:
+                      match = re.match(r'^(\w[\w@-]*)\s*\{', line.strip())
+                      if match and not line.strip().startswith('/'):
+                          if current_node:
+                              nodes[current_node] = current_content
+                          current_node = match.group(1)
+                          current_content = [line]
+                      elif current_node:
+                          current_content.append(line)
+                          if line.strip() == '};':
+                              nodes[current_node] = current_content
+                              current_node = None
+
+              return nodes
+
+          vermeer_nodes = extract_nodes('dts/sm8550-xiaomi-vermeer.dts')
+
+          ref_files = [f for f in os.listdir('reference/arch/arm64/boot/dts/qcom/') 
+                       if f.startswith('sm8550-xiaomi-') and f.endswith('.dts')]
+
+          if ref_files:
+              ref_nodes = extract_nodes(f'reference/arch/arm64/boot/dts/qcom/{ref_files[0]}')
+
+              print("=== 节点对比报告 ===")
+              print(f"vermeer 节点数: {len(vermeer_nodes)}")
+              print(f"参考节点数: {len(ref_nodes)}")
+              print()
+
+              missing_in_vermeer = set(ref_nodes.keys()) - set(vermeer_nodes.keys())
+              if missing_in_vermeer:
+                  print("[警告] vermeer 缺少以下节点（参考设备有）:")
+                  for node in sorted(missing_in_vermeer):
+                      print(f"  - {node}")
+
+              extra_in_vermeer = set(vermeer_nodes.keys()) - set(ref_nodes.keys())
+              if extra_in_vermeer:
+                  print("\n[信息] vermeer 新增的节点:")
+                  for node in sorted(extra_in_vermeer):
+                      print(f"  - {node}")
+
+          print("\n=== vermeer 节点列表 ===")
+          for node in sorted(vermeer_nodes.keys()):
+              print(f"  ✓ {node}")
+          PYEOF
+
+      - name: Validate with dt-schema
+        run: |
+          if [ -d "dts/bindings" ]; then
+            dt-validate dts/sm8550-xiaomi-vermeer.dts --bindings dts/bindings/ || true
+          fi
+
+      - name: Upload DTB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtb-check-result
+          path: |
+            dts/*.dtb
+            dts/compile.log
