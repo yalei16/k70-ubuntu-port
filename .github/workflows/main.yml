@@ -39,8 +39,8 @@ jobs:
     uses: ./.github/workflows/reusable/kernel-build.yml
     with:
       kernel_version: ${{ github.event.inputs.kernel_version || 'v6.12' }}
-      device: ${{ env.DEVICE }}
-      soc: ${{ env.SOC }}
+      device: vermeer
+      soc: sm8550
       defconfig: sm8550_defconfig
 
   build-edk2:
